@@ -172,7 +172,6 @@ pub const EPOCH_DURATION_IN_SLOTS: u64 = {
 pub const PRIMARY_PROBABILITY: (u64, u64) = (1, 4);
 
 pub struct CurrencyToVoteHandler;
-
 impl CurrencyToVoteHandler {
     fn factor() -> Balance { (Balances::total_issuance() / u64::max_value() as Balance).max(1) }
 }

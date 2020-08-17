@@ -278,6 +278,7 @@ repository = 'https://github.com/substrate-developer-hub/substrate-node-template
 version = '2.0.0-rc4'
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
+
 [build-dependencies.wasm-builder-runner]
 git = 'https://github.com/paritytech/substrate.git'
 package = 'substrate-wasm-builder-runner'
