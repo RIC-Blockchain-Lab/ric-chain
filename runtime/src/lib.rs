@@ -9,36 +9,51 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use sp_std::prelude::*;
-use sp_core::{crypto::KeyTypeId, OpaqueMetadata};
+use sp_core::{crypto::KeyTypeId, OpaqueMetadata, u32_trait::{_1, _2, _3, _4}};
 use sp_runtime::{
 	ApplyExtrinsicResult, generic, create_runtime_str, impl_opaque_keys, MultiSignature,
-	transaction_validity::{TransactionValidity, TransactionSource},
+	transaction_validity::{TransactionValidity, TransactionSource, TransactionPriority},
 };
 use sp_runtime::traits::{
-	BlakeTwo256, Block as BlockT, IdentityLookup, Verify, IdentifyAccount, NumberFor, Saturating,
+	self, BlakeTwo256, Block as BlockT, OpaqueKeys, IdentityLookup, SaturatedConversion, 
+    Verify, IdentifyAccount, NumberFor, Saturating, Convert, StaticLookup,
 };
 use sp_api::impl_runtime_apis;
-
 use grandpa::{AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList};
 use grandpa::fg_primitives;
 use sp_version::RuntimeVersion;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
+use sp_runtime::curve::PiecewiseLinear;
+use session::{historical as session_historical};
+use im_online::sr25519::AuthorityId as ImOnlineId;
+use system::{EnsureRoot, EnsureOneOf};
+use codec::Encode;
+use static_assertions::const_assert;
+use currency::{DOLLARS, CENTS};
 
 // A few exports that help ease life for downstream crates.
 #[cfg(any(feature = "std", test))]
 pub use sp_runtime::BuildStorage;
 pub use timestamp::Call as TimestampCall;
 pub use balances::Call as BalancesCall;
-pub use sp_runtime::{Permill, Perbill};
+pub use sp_runtime::{
+    Permill, Perbill, Perquintill, Percent, ModuleId, FixedPointNumber,
+};
 pub use frame_support::{
 	construct_runtime, parameter_types, StorageValue,
-	traits::{KeyOwnerProofSystem, Randomness},
+	traits::{
+        KeyOwnerProofSystem, Randomness, LockIdentifier, OnUnbalanced, Currency, Imbalance, Filter,
+    },
 	weights::{
 		Weight, IdentityFee,
 		constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
 	},
+    debug,
 };
+
+pub use staking::StakerStatus;
+pub use transaction_payment::{Multiplier, TargetedFeeAdjustment};
 
 /// Importing a template pallet
 pub use template;
@@ -69,6 +84,13 @@ pub type Hash = sp_core::H256;
 /// Digest item type.
 pub type DigestItem = generic::DigestItem<Hash>;
 
+pub mod currency {
+    use super::Balance;
+    pub const MILLICENTS: Balance = 1_000_000_000;
+    pub const CENTS: Balance = 1_000 * MILLICENTS;
+    pub const DOLLARS: Balance = 100 * CENTS;
+}
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -89,9 +111,39 @@ pub mod opaque {
 		pub struct SessionKeys {
 			pub babe: Babe,
 			pub grandpa: Grandpa,
+            pub im_online: ImOnline,
 		}
 	}
 }
+
+pub mod report {
+	use super::{Signature, Verify};
+	use system::offchain::AppCrypto;
+	use sp_core::crypto::{key_types, KeyTypeId};
+
+	/// Key type for the reporting module. Used for reporting BABE and GRANDPA
+	/// equivocations.
+	pub const KEY_TYPE: KeyTypeId = key_types::REPORTING;
+
+	mod app {
+		use sp_application_crypto::{app_crypto, sr25519};
+		app_crypto!(sr25519, super::KEY_TYPE);
+	}
+
+	/// Identity of the equivocation/misbehavior reporter.
+	pub type ReporterId = app::Public;
+
+	/// An `AppCrypto` type to allow submitting signed transactions using the reporting
+	/// application key as signer.
+	pub struct ReporterAppCrypto;
+
+	impl AppCrypto<<Signature as Verify>::Signer, Signature> for ReporterAppCrypto {
+		type RuntimeAppPublic = ReporterId;
+		type GenericSignature = sp_core::sr25519::Signature;
+		type GenericPublic = sp_core::sr25519::Public;
+	}
+}
+
 
 /// This runtime version.
 pub const VERSION: RuntimeVersion = RuntimeVersion {
@@ -118,6 +170,20 @@ pub const EPOCH_DURATION_IN_SLOTS: u64 = {
   (EPOCH_DURATION_IN_BLOCKS as f64 * SLOT_FILL_RATE) as u64
 };
 pub const PRIMARY_PROBABILITY: (u64, u64) = (1, 4);
+
+pub struct CurrencyToVoteHandler;
+
+impl CurrencyToVoteHandler {
+    fn factor() -> Balance { (Balances::total_issuance() / u64::max_value() as Balance).max(1) }
+}
+
+impl Convert<Balance, u64> for CurrencyToVoteHandler {
+    fn convert(x: Balance) -> u64 { (x / Self::factor()) as u64 }
+}
+
+impl Convert<u128, Balance> for CurrencyToVoteHandler {
+    fn convert(x: u128) -> Balance { x * Self::factor() }
+}
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
