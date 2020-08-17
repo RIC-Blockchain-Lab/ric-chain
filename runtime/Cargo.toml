@@ -1,32 +1,6 @@
-[features]
-default = ['std']
-std = [
-    'babe/std',
-    'balances/std',
-    'codec/std',
-    'frame-executive/std',
-    'frame-support/std',
-    'grandpa/std',
-    'randomness-collective-flip/std',
-    'serde',
-    'sp-api/std',
-    'sp-block-builder/std',
-    'sp-consensus-babe/std',
-    'sp-core/std',
-    'sp-inherents/std',
-    'sp-io/std',
-    'sp-offchain/std',
-    'sp-runtime/std',
-    'sp-session/std',
-    'sp-std/std',
-    'sp-transaction-pool/std',
-    'sp-version/std',
-    'sudo/std',
-    'system/std',
-    'timestamp/std',
-    'transaction-payment/std',
-    'template/std',
-]
+[dependencies]
+static_assertions = "1.1.0"
+
 [dependencies.babe]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
@@ -38,6 +12,27 @@ version = '2.0.0-rc4'
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 package = 'pallet-balances'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.authorship]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-authorship'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.offences]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-offences'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.im-online]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-im-online'
 tag = 'v2.0.0-rc4'
 version = '2.0.0-rc4'
 
@@ -150,6 +145,18 @@ git = 'https://github.com/paritytech/substrate.git'
 tag = 'v2.0.0-rc4'
 version = '2.0.0-rc4'
 
+[dependencies.sp-staking]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.sp-application-crypto]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
 [dependencies.sudo]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
@@ -164,10 +171,87 @@ package = 'frame-system'
 tag = 'v2.0.0-rc4'
 version = '2.0.0-rc4'
 
+[dependencies.session]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+features = ["historical"]
+package = 'pallet-session'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.staking]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-staking'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.pallet-staking-reward-curve]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-staking-reward-curve'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.utility]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-utility'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.treasury]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-treasury'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.collective]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-collective'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.elections-phragmen]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-elections-phragmen'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.membership]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-membership'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.democracy]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-democracy'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
+[dependencies.scheduler]
+default-features = false
+git = 'https://github.com/paritytech/substrate.git'
+package = 'pallet-scheduler'
+tag = 'v2.0.0-rc4'
+version = '2.0.0-rc4'
+
 [dependencies.template]
 default-features = false
 package = 'pallet-template'
 path = '../pallets/template'
+version = '2.0.0-rc4'
+
+[dependencies.organization]
+default-features = false
+package = 'pallet-organization'
+path = '../pallets/organization'
 version = '2.0.0-rc4'
 
 [dependencies.timestamp]
@@ -199,3 +283,46 @@ git = 'https://github.com/paritytech/substrate.git'
 package = 'substrate-wasm-builder-runner'
 tag = 'v2.0.0-rc4'
 version = '1.0.5'
+
+[features]
+default = ['std']
+std = [
+    'babe/std',
+    'balances/std',
+    'authorship/std',
+    'codec/std',
+    'frame-executive/std',
+    'frame-support/std',
+    'grandpa/std',
+    'randomness-collective-flip/std',
+    'serde',
+    'sp-api/std',
+    'sp-block-builder/std',
+    'sp-consensus-babe/std',
+    'sp-core/std',
+    'sp-inherents/std',
+    'sp-io/std',
+    'sp-offchain/std',
+    'sp-runtime/std',
+    'sp-session/std',
+    'sp-std/std',
+    'sp-transaction-pool/std',
+    'sp-version/std',
+    'sp-staking/std',
+    'sudo/std',
+    'system/std',
+    'timestamp/std',
+    'session/std',
+    'staking/std',
+    'offences/std',
+    'im-online/std',
+    'transaction-payment/std',
+    'utility/std',
+    'treasury/std',
+    'collective/std',
+    'elections-phragmen/std',
+    'membership/std',
+    'democracy/std',
+    'template/std',
+    'organization/std',
+]
