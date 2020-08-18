@@ -150,7 +150,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	spec_name: create_runtime_str!("node-template"),
 	impl_name: create_runtime_str!("node-template"),
 	authoring_version: 1,
-	spec_version: 1,
+	spec_version: 7,
 	impl_version: 1,
 	apis: RUNTIME_API_VERSIONS,
 	transaction_version: 1,
@@ -184,6 +184,35 @@ impl Convert<u128, Balance> for CurrencyToVoteHandler {
     fn convert(x: u128) -> Balance { x * Self::factor() }
 }
 
+type NegativeImbalance = <Balance as Currency<AccountId>>::NegativeImbalance;
+
+pub struct Author;
+impl OnUnbalanced<NegativeImbalance> for Author {
+    fn on_nonzero_unbalanced(amount: NegativeImbalance) {
+        Balances::resolve_creating(&Authorship::author(), amount);
+    }
+}
+
+pub struct DealWithFees;
+impl OnUnbalanced<NegativeImbalance> for DealWithFees {
+    fn on_unbalanceds<B>(mut fees_then_tips: impl Iterator<Item=NegativeImbalance>) {
+        if let Some(fees) = fees_then_tips.next() {
+            let mut split = fees.ration(80, 20);
+            if let Some(tips) = fees_then_tips.next() {
+                tips.ration_merge_into(80, 20, &mut split);
+            }
+            Treasury::on_unbalanced(split.0);
+            Author::on_unbalanced(split.1);
+        }
+    }
+}
+
+pub struct BaseFilter;
+impl Filter<Call> for BaseFilter {
+    fn filter(call: &Call) -> bool {
+        !matches!(call, Call::TemplateModule(_))
+    }
+}
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
 pub fn native_version() -> NativeVersion {
@@ -269,14 +298,58 @@ parameter_types! {
 impl babe::Trait for Runtime {
   type EpochDuration = EpochDuration;
   type ExpectedBlockTime = ExpectedBlockTime;
-  type EpochChangeTrigger = babe::SameAuthoritiesForever;
+  type EpochChangeTrigger = babe::ExternalTrigger;
+}
+
+impl<LocalCall> system::offchain::CreateSignedTransaction<LocalCall> for Runtime where
+    Call: From<LocalCall>,
+{
+    fn create_transaction<C: system::offchain::AppCrypto<Self::Public, Self::Signature>>(
+        call: Call,
+        public: <Signature as traits::Verify>::Signer,
+        account: AccountId,
+        nonce: Index,
+    ) -> Option<(Call, <UncheckedExtrinsic as traits::Extrinsic>::SignaturePayload)> {
+        let period = BlockHashCount::get()
+                    .checked_next_power_of_two()
+                    .map(|c| c / 2)
+                    .unwrap_or(2) as u64;
+        let current_block = System::block_number()
+                    .saturated_into::<u64>()
+                    .saturating_sub(1);
+        let tip = 0;
+        let extra: SignedExtra = (
+            system::CheckSpecVersion::<Runtime>::new(),
+            system::CheckTxVersion::<Runtime>::new(),
+            system::CheckGenesis::<Runtime>::new(),
+            system::CheckEra::<Runtime>::from(generic::Era::mortal(period, current_block)),
+            system::CheckNonce::<Runtime>::from(nonce),
+            system::CheckWeight::<Runtime>::new(),
+            transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+            grandpa::ValidateEquivocationReport::<Runtime>::new(),
+        );
+        let raw_payload = SignedPayload::new(call, extra).map_err(|e| {
+            debug::warn!("Unable to create signed payload: {:?}", e);
+        }).ok()?;
+        let signature = raw_payload_using_encoded(|payload| {
+            C::sign(payload, public)
+        })?;
+        let address = IdentityLookup::<AccountId>::unlookup(account);
+        let (call, extra, _) = raw_payload_ddconstruct();
+        Some((call, (address, signature.into(), extra)))
+    }
+}
+
+impl system::offchain::SigningTypes for Runtime {
+    type Public = <Signature as traits::Verify>::Signer;
+    type Signature = Signature;
 }
 
 impl grandpa::Trait for Runtime {
 	type Event = Event;
 	type Call = Call;
 
-	type KeyOwnerProofSystem = ();
+	type KeyOwnerProofSystem = Historical;
 
 	type KeyOwnerProof =
 		<Self::KeyOwnerProofSystem as KeyOwnerProofSystem<(KeyTypeId, GrandpaId)>>::Proof;
@@ -286,7 +359,12 @@ impl grandpa::Trait for Runtime {
 		GrandpaId,
 	)>>::IdentificationTuple;
 
-	type HandleEquivocation = ();
+	type HandleEquivocation = grandpa::EquivocationHandler<
+        Self::KeyOwnerIdentification,
+        report::ReporterAppCrypto,
+        Runtime,
+        Offences,
+    >;
 }
 
 parameter_types! {
