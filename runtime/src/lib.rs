@@ -86,11 +86,8 @@ pub type DigestItem = generic::DigestItem<Hash>;
 
 pub mod currency {
     use super::Balance;
-
     pub const MILLICENTS: Balance = 1_000_000_000;
-
     pub const CENTS: Balance = 1_000 * MILLICENTS;
-
     pub const DOLLARS: Balance = 100 * CENTS;
 }
 
@@ -298,6 +295,7 @@ parameter_types! {
   pub const EpochDuration: u64 = EPOCH_DURATION_IN_SLOTS;
   pub const ExpectedBlockTime: u64 = MILLISECS_PER_BLOCK;
 }
+
 impl babe::Trait for Runtime {
   type EpochDuration = EpochDuration;
   type ExpectedBlockTime = ExpectedBlockTime;
@@ -370,6 +368,19 @@ impl grandpa::Trait for Runtime {
     >;
 }
 
+parameter_type! {
+	pub const SessionDuration: BlockNumber = EPOCH_DURATION_IN_SLOTS as _;
+	pub const ImOnlineUnsignedPriority: TransactionPriority = TransactionPriority::max_value();
+}
+
+impl im_online::Trait for Runtime {
+	type AuthorityId = ImOnlineId;
+	type Event = Event;
+	type SessionDuration = SessionDuration;
+	type ReportUnresponsiveness = Offences;
+	type UnsignedPriority = ImOnlineUnsignedPriority;
+}
+
 parameter_types! {
 	pub const MinimumPeriod: u64 = SLOT_DURATION / 2;
 }
@@ -380,6 +391,85 @@ impl timestamp::Trait for Runtime {
 	type OnTimestampSet = Babe;
 	type MinimumPeriod = MinimumPeriod;
 }
+
+parameter_type! {
+	pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(17);
+}
+
+impl session::Trait for Runtime {
+	type Event = Event;
+	type ValidatorId = <Self as system::Trait>::AccountId;
+	type ValidatorIdOf = staking::StashOf<Self>;
+	type ShouldEndSession = Babe;
+	type NextSessionRotation = Babe;
+	type SessionManager = session::historical::NoteHistoricalRoot<Self, Staking>;
+	type SessionHandler = <opaque::SessionKeys as OpaqueKeys>::KeyTypeIdProviders;
+	type Keys = opaque::SessionKeys;
+	type DisabledValidatorsThreshold = DisabledValidatorsThreshold;
+}
+
+impl session::historical::Trait for Runtime {
+	type FullIdentification = staking::Exposure<AccountId, Balance>;
+	type FullIdentificationOf = staking::ExposureOf<Runtime>;
+}
+
+pallet_staking_reward_curve::build! {
+	const REWARD_CURVE: PiecewiseLinear<'static> = curve!(
+		min_inflation: 0_025_000,
+		max_inflation: 0_100_000,
+		ideal_stake: 0_500_000,
+		falloff: 0_0500_000,
+		max_piece_count: 40,
+		test_precision: 0_005_000,	
+	);
+}
+
+parameter_types! {
+	pub const SessionsPerEra: sp_staking::SessionIndex = 6;
+	pub const BondingDuration: staking::EraIndex = 24 * 28;
+	pub const SlashDeferDuration: staking::EraIndex = 24 * 7;
+	pub const RewardCurve: &'static PiecewiseLinear<'static> = &REWARD_CURVE;
+	pub const MaxNominatorRewardedPerValidator: u32 = 64;
+	pub const ElectionLookahead: BlockNumber = EPOCH_DURATION_IN_BLOCKS / 4;
+	pub const MaxIterations: u32 = 10;
+	pub MinSolutionScoreBump: Perbill = Perbill::from_rational_approximation(5u32, 10_000);
+	pub const StakingUnsignedPriority: TransactionPriority = TransactionPriority::max_value() / 2;
+}
+
+impl<C> system::offchain::SendTransactionTypes<C> for Runtime where 
+	Call: From<C>,
+{
+	type Extrinsic = UncheckedExtrinsic;
+	type OverarchingCall = Call;	
+}
+
+impl staking::Trait for Runtime {
+	type Currency = Balances;
+	type UnixTime = Timestamp;
+	type CurrencyToVote = CurrencyToVoteHandler;
+	type RewardRemainder = Treasury;
+	type Event = Event;
+	type Slash = Treasury;
+	type Reward = ();
+	type SessionsPerEra = SessionPerEra;
+	type BondingDuration = BondingDuration;
+	type SlashDeferDuration = SlashDeferDuration;
+	type SlashCancelOrigin = EnsureOneOf<
+		AccountId,
+		EnsureRoot<AccountId>,
+		collective::EnsureProportionAtLeast<_3, _4, AccountId, CouncilCollective>
+	>;
+	type SessionInterface = Self;
+	type RewardCurve = RewardCurve;
+	type NextNewSession = Session;
+	type ElectionLookahead = ElectionLookahead;
+	type Call = Call;
+	type MaxIterations = MaxIterations;
+	type MinSoluctionScoreBump = MinSolutionScoreBump;
+	type MaxNominatorRewardedPerValidator = MaxNominatorRewardedPerValidator;
+	type UnsignedPriority = StakingUnsignedPriority;
+}
+
 
 parameter_types! {
 	pub const ExistentialDeposit: u128 = 500;
