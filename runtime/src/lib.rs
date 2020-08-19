@@ -470,6 +470,27 @@ impl staking::Trait for Runtime {
 	type UnsignedPriority = StakingUnsignedPriority;
 }
 
+parameter_types! {
+	pub const UncleGenerations: BlockNumber = 5;
+}
+
+impl authorship::Trait for Runtime {
+	type FindAuthor = session::FindAccountFromAuthorIndex<Self, Babe>;
+	type UncleGenerations = UncleGenerations;
+	type FilterUncle = ();
+	type EventHandler = (Staking, ImOnline);
+}
+
+parameter_types! {
+	pub OffencesWeightSoftLimit: Weight = Perbill::from_percent(60) * MaximumBlockWeight::get();
+}
+
+impl offences::Trait for Runtime {
+	type Event = Event;
+	type IdentificationTuple = session::historical::IdentificationTuple<Self>;
+	type OnOffenceHandler = Staking;
+	type WeightSoftLimit = OffencesWeightSoftLimit;
+}
 
 parameter_types! {
 	pub const ExistentialDeposit: u128 = 500;
@@ -487,20 +508,72 @@ impl balances::Trait for Runtime {
 
 parameter_types! {
 	pub const TransactionByteFee: Balance = 1;
+	pub const TargetBlockFullness: Perquintill = Perquintill::from_percent(25);
+	pub AdjustmentVariable: Multiplier = Multipier::saturating_from_rational(1, 100_000);
+	pub MinimumMultiplier: Multiplier = Multiplier::saturating_from_rational(1, 1_000_000_000u128);
 }
 
 impl transaction_payment::Trait for Runtime {
-	type Currency = balances::Module<Runtime>;
-	type OnTransactionPayment = ();
+	type Currency = Balances;
+	type OnTransactionPayment = DealWithFees;
 	type TransactionByteFee = TransactionByteFee;
 	type WeightToFee = IdentityFee<Balance>;
-	type FeeMultiplierUpdate = ();
+	type FeeMultiplierUpdate = 
+		TargetedFeeAdjustment<Self, TargetBlockFullness, AdjustmentVarialbe, MinimumMultiplier>;
 }
 
 impl sudo::Trait for Runtime {
 	type Event = Event;
 	type Call = Call;
 }
+
+impl utility::Trait for Runtime {
+	type Event = Event;
+	type Call = Call;
+}
+
+parameter_types! {
+	pub const ProposalBond: Permill = Permill::from_percent(5);
+	pub const ProposalBondMinimum: Balance = 1 * DOLLARS;
+	pub const SpendPeriod: BlockNumber = 1 * DAYS;
+	pub const Burn: Permill = Permill::from_percent(50);
+	pub const TipCountdown: BlockNumber = 1 * DAYS;
+	pub const TipFindersFee: Percent = Percent::from_percent(20);
+	pub const TipReportDepositBase: Balance = 1 * DOLLARS;
+	pub const TipReportDepositPerByte: Balance = 1 * CENTS;
+	pub const TreasuryModuledId: ModuleId = ModuleId(*b"py/trsry");
+}
+
+impl treasury::Trait for Runtime {
+	type ModuleId = TreasuryModuleId;
+	type Currency = Balances;
+	type ApproveOrigin = EnsureOneOf<
+		AccountId,
+		EnsureRoot<AccountId>,
+		collective::EnsureMembers<_4, AccountId, CouncilCollective>
+	>;
+	type RejectOrigin = EnsureOneOf<
+		AccountId,
+		EnsureRoot<AccountId>,
+		collective::EnsureMembers<_2, AccountId, CouncilCollective>
+	>;
+	type Tippers = Elections;
+	type TipCountdown = TipCountdown;
+	type TipFindersFee = TipFindersFee;
+	type TipReportDepositBase = TipReportDepositBase;
+	type TipReportDepositPerByte = TipReportDepositPerByte;
+	type Event = Event;
+	type ProposalRejection = ();
+	type ProposalBond = ProposalBond;
+	type ProposalBondMinimum = ProposalBondMinimum;
+	type SpendPeriod = SpendPeriod;
+	type Burn = Burn;
+}
+
+
+
+
+
 
 /// Used for the module template in `./template.rs`
 impl template::Trait for Runtime {
