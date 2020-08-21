@@ -711,9 +711,6 @@ impl organization::Trait for Runtime {
 	type Balance = Balance;
 }
 
-
-
-
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
@@ -723,27 +720,47 @@ construct_runtime!(
 		System: system::{Module, Call, Config, Storage, Event<T>},
 		RandomnessCollectiveFlip: randomness_collective_flip::{Module, Call, Storage},
 		Timestamp: timestamp::{Module, Call, Storage, Inherent},
-		Babe: babe::{Module, Call, Storage, Config, Inherent(Timestamp)},
-		Grandpa: grandpa::{Module, Call, Storage, Config, Event},
+		Babe: babe::{Module, Call, Storage, Config, Inherent(TimeStamp)},
+		Grandpa: grandpa:{Module, Call, Storage, Config, Event},
 		Balances: balances::{Module, Call, Storage, Config<T>, Event<T>},
 		TransactionPayment: transaction_payment::{Module, Storage},
 		Sudo: sudo::{Module, Call, Config<T>, Storage, Event<T>},
-		// Used for the module template in `./template.rs`
+
+		//staking related module
+		Staking: staking::{Module, Call, Config<T>, Storage, Event<T>, ValidateUnsigned},
+		Authorship: authorship::{Module, Call, Storage, Inherent},
+		Offences: offences::{Module, Call, Storage, Event},
+		Session: session:{Module, Call, Storage, Event, Config<T>},
+		Historical: session_historical::{Module},
+		Utility: utility::{Module, Call, Event},
+		ImOnline: im_online::{Module, Call, Storage, Event<T>, ValidateUnsigned, Config<T>},
+
+		//Governance related module
+		Treasury: treasury::{Module, Call, Storage, Config, Event<T>},
+		Council: collective::<Instance1>::{Module, Call, Storage, Origin<T>, Event<T>, Config<T>},
+		TechnicalCommittee: collective::<Instance2>::{Module, Call, Storage, Origin<T>, Event<T>, Config<T>},
+		Elections: elections_phragmen::{Module, Call, Storage, Event<T>, Config<T>},
+		TechnicalMembership: membership::<Instance1>::{Module, Call, Storage, Event<T>, Config<T>},
+		Democracy: democracy::{Module, Call, Storage, Config, Event<T>},
+		Schedular: schedular::{Module, Call, Storage, Event<T>},
+
+		//business module
 		TemplateModule: template::{Module, Call, Storage, Event<T>},
+		OrganizationModule: organization::{Module, Call, Storage, Event<T>},
 	}
 );
 
-/// The address format for describing accounts.
+/// the address format for describing accounts
 pub type Address = AccountId;
-/// Block header type as expected by this runtime.
+/// block header type as expected by this runtime
 pub type Header = generic::Header<BlockNumber, BlakeTwo256>;
-/// Block type as expected by this runtime.
+/// block type as expected by this runtime
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
-/// A Block signed with a Justification
+/// a block signed with a justification
 pub type SignedBlock = generic::SignedBlock<Block>;
-/// BlockId type as expected by this runtime.
+/// blockid type as expected by this runtime
 pub type BlockId = generic::BlockId<Block>;
-/// The SignedExtension to the basic transaction logic.
+/// the signedextension to the basic transaction logic
 pub type SignedExtra = (
 	system::CheckSpecVersion<Runtime>,
 	system::CheckTxVersion<Runtime>,
@@ -751,14 +768,17 @@ pub type SignedExtra = (
 	system::CheckEra<Runtime>,
 	system::CheckNonce<Runtime>,
 	system::CheckWeight<Runtime>,
-	transaction_payment::ChargeTransactionPayment<Runtime>
+	transaction_payment::ChargeTransactionPayment<Runtime>,
+	grandpa::ValidateEquivocationReport<Runtime>,
 );
-/// Unchecked extrinsic type as expected by this runtime.
+/// unchecked extrinsic type as expected by this runtime
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
-/// Extrinsic type that has already been checked.
+/// extrinsic type that has already been checked
 pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExtra>;
-/// Executive: handles dispatch to the various modules.
+/// Executive: handles dispatch to the various modules
 pub type Executive = frame_executive::Executive<Runtime, Block, system::ChainContext<Runtime>, Runtime, AllModules>;
+/// the payload being signed in transactions
+pub type SignedPayload = generic::SignedPayload<Call, SignedExtra>;
 
 impl_runtime_apis! {
 	impl sp_api::Core<Block> for Runtime {
@@ -810,7 +830,7 @@ impl_runtime_apis! {
 		fn validate_transaction(
 			source: TransactionSource,
 			tx: <Block as BlockT>::Extrinsic,
-		) -> TransactionValidity {
+		) -> TransactionValitidy {
 			Executive::validate_transaction(source, tx)
 		}
 	}
@@ -822,22 +842,22 @@ impl_runtime_apis! {
 	}
 
 	impl sp_consensus_babe::BabeApi<Block> for Runtime {
-    fn configuration() -> sp_consensus_babe::BabeGenesisConfiguration {
-      sp_consensus_babe::BabeGenesisConfiguration{
-        slot_duration: Babe::slot_duration(),
-        epoch_length: EpochDuration::get(),
-        c: PRIMARY_PROBABILITY,
-        genesis_authorities: Babe::authorities(),
-        randomness: Babe::randomness(),
-        allowed_slots: sp_consensus_babe::AllowedSlots::PrimaryAndSecondaryPlainSlots,
-      }
-    }
+		fn configuration() -> sp_consensus_babe::BabeGenesisConfiguration {
+			sp_consensus_babe::BabeGenesisConfiguration{
+				slot_duration: Babe::slot_duration(),
+				epoch_length: EpochDuration::get(),
+				c: PRIMARY_PROBABILITY,
+				genesis_authorities: Babe::authorities(),
+				randomness: Babe::randomness(),
+				allowed_slots: sp_consensus_babe::AllowedSlots::PrimaryAndSecondaryPlaitSlots,
+			}
+		}
 
-    fn current_epoch_start() -> sp_consensus_babe::SlotNumber {
-      Babe::current_epoch_start()
-    }
-  }
-
+		fn current_epoch_start() -> sp_consensus_babe::SlotNumber {
+			Babe::current_epoch_start()
+		}
+	}
+	
 	impl sp_session::SessionKeys<Block> for Runtime {
 		fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
 			opaque::SessionKeys::generate(seed)
@@ -856,23 +876,28 @@ impl_runtime_apis! {
 		}
 
 		fn submit_report_equivocation_extrinsic(
-			_equivocation_proof: fg_primitives::EquivocationProof<
+			equivocation_proof: fg_primitives::EquivocationProof<
 				<Block as BlockT>::Hash,
 				NumberFor<Block>,
 			>,
-			_key_owner_proof: fg_primitives::OpaqueKeyOwnershipProof,
+			key_owner_proof: fg_primitives::OpaqueKeyOwnershipProof,
 		) -> Option<()> {
-			None
+			let key_owner_proof = key_owner_proof_decode()?;
+
+			Grandpa::submit_report_equivocation_extrinsic(
+				equivocation_proof,
+				key_owner_proof,
+			)
 		}
 
 		fn generate_key_ownership_proof(
 			_set_id: fg_primitives::SetId,
-			_authority_id: GrandpaId,
+			authority_id: GrandpaId,
 		) -> Option<fg_primitives::OpaqueKeyOwnershipProof> {
-			// NOTE: this is the only implementation possible since we've
-			// defined our key owner proof type as a bottom type (i.e. a type
-			// with no values).
-			None
+			use codec::Encode;
+			Historical::prove((fg_primitives::KEY_TYPE, authority_id))
+				.map(|p| p.encode())
+				.map(fg_primitives::OpaqueKeyOwnershipProof::new)			
 		}
 	}
 }
