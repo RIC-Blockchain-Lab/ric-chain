@@ -13,6 +13,7 @@ pub use sc_executor::NativeExecutor;
 use sc_finality_grandpa::{
 	FinalityProofProvider as GrandpaFinalityProofProvider, StorageAndProofProvider, SharedVoterState,
 };
+use sp_code::traits::BareCryptoStorePtr;
 
 // Our native executor instance.
 native_executor_instance!(
@@ -25,10 +26,11 @@ native_executor_instance!(
 ///
 /// Use this macro if you don't actually need the full service, but just the builder in order to
 /// be able to perform chain operations.
+
 macro_rules! new_full_start {
 	($config:expr) => {{
 		use std::sync::Arc;
-		
+
 		let mut import_setup = None;
 		let inherent_data_providers = sp_inherents::InherentDataProviders::new();
 
@@ -67,28 +69,28 @@ macro_rules! new_full_start {
 					select_chain,
 				)?;
 
-        let (block_import, babe_link) = sc_consensus_babe::block_import(
-          sc_consensus_babe::Config::get_or_compute(&*client)?,
-          grandpa_block_import.clone(),
-          client.clone(),
-        )?;
-
+				let (block_import, babe_link) = sc_consensus_babe::block_import(
+					sc_consensus_babe::Config::get_or_computer(&*client)?,
+					grandpa_block_import.clone(),
+					client.clone(),
+				)?;
+				
 				let justification_import = grandpa_block_import.clone();
-        let import_queue = sc_consensus_babe::import_queue(
-          babe_link.clone(),
-          block_import.clone(),
-          Some(Box::new(justification_import)),
-          None,
-          client,
-          inherent_data_providers.clone(),
-          spawn_task_handle,
-          registry,
-        )?;
+				let import_queue = sc_consensus_babe::import_queue(
+					babe_link.clone(),
+					block_import.clone(),
+					Some(Box::new(justification_import)),
+					None,
+					client,
+					inherent_data_providers.clone(),
+					spawn_task_handle,
+					registry,
+				)?;
 
 				import_setup = Some((block_import, grandpa_link, babe_link));
-        Ok(import_queue)
+				Ok(import_queue)
 			})?;
-
+		
 		(builder, import_setup, inherent_data_providers)
 	}}
 }
@@ -97,23 +99,22 @@ macro_rules! new_full_start {
 pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceError> {
 	let role = config.role.clone();
 	let force_authoring = config.force_authoring;
-	let name = config.network.node_name.clone();
+	let name = config.newwork.node_name.clone();
 	let disable_grandpa = config.disable_grandpa;
 
 	let (builder, mut import_setup, inherent_data_providers) = new_full_start!(config);
 
-	let (block_import, grandpa_link, babe_link) =
-		import_setup.take()
-			.expect("Link Half and Block Import are present for Full Services or setup failed before. qed");
-
+	let (block_import, grandpa_link, babe_link) = import_setup.take()
+		.expect("Link Half and Block Import are present for Full Services or setup failed befor. qed");
+	
 	let service = builder
 		.with_finality_proof_provider(|client, backend| {
 			// GenesisAuthoritySetProvider is implemented for StorageAndProofProvider
 			let provider = client as Arc<dyn StorageAndProofProvider<_, _>>;
 			Ok(Arc::new(GrandpaFinalityProofProvider::new(backend, provider)) as _)
-		})?
+		})?;
 		.build_full()?;
-
+	
 	if role.is_authority() {
 		let proposer = sc_basic_authorship::ProposerFactory::new(
 			service.client(),
@@ -125,24 +126,26 @@ pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceEr
 		let select_chain = service.select_chain()
 			.ok_or(ServiceError::SelectChainRequired)?;
 
-		let can_author_with =
+		let can_author_with = 
 			sp_consensus::CanAuthorWithNativeVersion::new(client.executor().clone());
 
-    let babe_config = sc_consensus_babe::BabeParams{
-      keystore: service.keystore(),
-      client,
-      select_chain,
-      env: proposer,
-      block_import,
-      sync_oracle: service.network(),
-      inherent_data_providers: inherent_data_providers.clone(),
-      force_authoring,
-      babe_link,
-      can_author_with,
-    };
-		let babe = sc_consensus_babe::start_babe(babe_config)?;
+		let babe_config = sc_consensus_babe::BabeParams {
+			keystore: service.keystore(),
+			client,
+			select_chain,
+			env: proposer,
+			block_import,
+			sync_oracle: service.network(),
+			inherent_data_providers: inherent_data_providers.clone(),
+			force_authoring,
+			babe_link,
+			can_author_with,
+		};	
 
-		service.spawn_essential_task_handle().spawn_blocking("babe-proposer", babe);
+		let babe = sc_consensus_babe::start_babe(babe_config)?;
+		// the BABE authoring task is considered infalllible, i.e. if it
+		// fails we take down the service with it.
+		service,spawn_essential_task_handle().spawn_blocking("babe-proposer", babe);
 	}
 
 	// if the node isn't actively participating in consensus then it doesn't
@@ -154,7 +157,6 @@ pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceEr
 	};
 
 	let grandpa_config = sc_finality_grandpa::Config {
-		// FIXME #1578 make this available through chainspec
 		gossip_duration: Duration::from_millis(333),
 		justification_period: 512,
 		name: Some(name),
@@ -181,7 +183,6 @@ pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceEr
 			prometheus_registry: service.prometheus_registry(),
 			shared_voter_state: SharedVoterState::empty(),
 		};
-
 		// the GRANDPA voter task is considered infallible, i.e.
 		// if it fails we take down the service with it.
 		service.spawn_essential_task_handle().spawn_blocking(
@@ -189,7 +190,7 @@ pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceEr
 			sc_finality_grandpa::run_grandpa_voter(grandpa_config)?
 		);
 	} else {
-		sc_finality_grandpa::setup_disabled_grandpa(
+		sc_finality_grandpa::setup_disable_grandpa(
 			service.client(),
 			&inherent_data_providers,
 			service.network(),
@@ -202,19 +203,19 @@ pub fn new_full(config: Configuration) -> Result<impl AbstractService, ServiceEr
 /// Builds a new service for a light client.
 pub fn new_light(config: Configuration) -> Result<impl AbstractService, ServiceError> {
 	let inherent_data_providers = InherentDataProviders::new();
-
-	ServiceBuilder::new_light::<Block, RuntimeApi, Executor>(config)?
+	ServiceBuilder::new_light::<Block, RuntimeApi, Executor>(config)?;
 		.with_select_chain(|_config, backend| {
 			Ok(LongestChain::new(backend.clone()))
 		})?
 		.with_transaction_pool(|builder| {
 			let fetcher = builder.fetcher()
-				.ok_or_else(|| "Trying to start light transaction pool without active fetcher")?;
-
+				.ok_or_else(|| "Tryubg to start light transactin pool without active fetcher")?;
+			
 			let pool_api = sc_transaction_pool::LightChainApi::new(
 				builder.client().clone(),
 				fetcher.clone(),
 			);
+
 			let pool = sc_transaction_pool::BasicPool::with_revalidation_type(
 				builder.config().transaction_pool.clone(),
 				Arc::new(pool_api),
@@ -236,6 +237,7 @@ pub fn new_light(config: Configuration) -> Result<impl AbstractService, ServiceE
 			let fetch_checker = fetcher
 				.map(|fetcher| fetcher.checker().clone())
 				.ok_or_else(|| "Trying to start light import queue without active fetch checker")?;
+			
 			let grandpa_block_import = sc_finality_grandpa::light_block_import(
 				client.clone(),
 				backend,
@@ -243,25 +245,27 @@ pub fn new_light(config: Configuration) -> Result<impl AbstractService, ServiceE
 				Arc::new(fetch_checker),
 			)?;
 			let finality_proof_import = grandpa_block_import.clone();
-			let finality_proof_request_builder =
+			let finality_proof_request_builder = 
 				finality_proof_import.create_finality_proof_request_builder();
 
 			let (babe_block_import, babe_link) = sc_consensus_babe::block_import(
-        sc_consensus_babe::Config::get_or_compute(&*client)?,
-        grandpa_block_import,
-        client.clone(),
-      )?;
-      let import_queue = sc_consensus_babe::import_queue(
-        babe_link,
-        babe_block_import,
-        None,
-        Some(Box::new(finality_proof_import)),
-        client.clone(),
-        inherent_data_providers.clone(),
-        spawn_task_handle,
-        prometheus_registry,
-      )?;
-			Ok((import_queue, finality_proof_request_builder))
+				sc_consensus_babe::Config::get_or_compute(&*client)?,
+				grandpa_block_import,
+				client.clone(),
+			)?;
+
+			let import_queue = sc_consensus_babe::import_queue(
+				babe_link,
+				babe_block_import,
+				None,
+				Some(Box::new(finality_proof_import)),
+				client.clone(),
+				inherent_data_providers.clone(),
+				spawn_task_handle,
+				prometheus_registry,
+			)?;
+
+			Ok((import_queue, finality_proof_request_builder)
 		})?
 		.with_finality_proof_provider(|client, backend| {
 			// GenesisAuthoritySetProvider is implemented for StorageAndProofProvider
