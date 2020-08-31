@@ -780,6 +780,7 @@ pub type Executive = frame_executive::Executive<Runtime, Block, system::ChainCon
 /// the payload being signed in transactions
 pub type SignedPayload = generic::SignedPayload<Call, SignedExtra>;
 
+
 impl_runtime_apis! {
 	impl sp_api::Core<Block> for Runtime {
 		fn version() -> RuntimeVersion {
