@@ -4,4 +4,5 @@ fn main() {
 	generate_cargo_keys();
 
 	rerun_if_git_head_changed();
+
 }
